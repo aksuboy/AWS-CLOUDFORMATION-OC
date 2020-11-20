@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: 2010-09-09
 Description: >-
-  Projet AWS OC CLOUDFORMATION
+  Projet AWS OC CLOUD
 Resources:
   MyVPC:
     Type: 'AWS::EC2::VPC'

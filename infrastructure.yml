@@ -1,6 +1,11 @@
 AWSTemplateFormatVersion: 2010-09-09
 Description: >-
   AWS CloudFormation VPC Template
+#
+Parameters:
+  KeyName:
+    Description: The EC2 Key Pair to allow SSH access to the instance
+    Type: 'AWS::EC2::KeyPair::KeyName'
 Resources:
   MonVPC:
     Type: 'AWS::EC2::VPC'
@@ -9,6 +14,7 @@ Resources:
       Tags:
         - Key: Name
           Value: 'MainVPC'
+
   PrivateSubnetA:
     Type: AWS::EC2::Subnet
     Properties:
@@ -18,6 +24,7 @@ Resources:
         - Key: Name
           Value: 'MainVPC-private-a'
       VpcId: !Ref MonVPC
+
   PrivateSubnetB:
     Type: AWS::EC2::Subnet
     Properties:
@@ -27,6 +34,7 @@ Resources:
         - Key: Name
           Value: 'MainVPC-private-b'
       VpcId: !Ref MonVPC
+
   PublicSubnetA:
     Type: AWS::EC2::Subnet
     Properties:
@@ -36,6 +44,7 @@ Resources:
         - Key: Name
           Value: 'MainVPC-public-a'
       VpcId: !Ref MonVPC
+
   PublicSubnetB:
     Type: AWS::EC2::Subnet
     Properties:
@@ -45,3 +54,17 @@ Resources:
         - Key: Name
           Value: 'MainVPC-public-b'
       VpcId: !Ref MonVPC
+  FirstWPServ:
+    Type: AWS::EC2::Instance
+    Properties:
+      AvailabilityZone: eu-west-3a
+      ImageId: ami-0f4c4d9ba38fd756e
+      InstanceType: t2.micro
+  SecondWPServ:
+    Type: AWS::EC2::Instance
+    Properties:
+      AvailabilityZone: eu-west-3a
+      ImageId: ami-0f4c4d9ba38fd756e
+      InstanceType: t2.micro
+
+# EFS AWS pour WP et BDD

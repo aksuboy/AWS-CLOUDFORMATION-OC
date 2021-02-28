@@ -1,0 +1,170 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  test
+Resources:
+  VPC:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: 'VPC'
+  
+  # PasserelleVPNEC2:
+  #   Type: AWS::EC2::Instance
+  #   Properties:
+  #       KeyName : "ec2wp" 
+  #       AvailabilityZone: eu-west-3c
+  #       ImageId: ami-02566bd2813f83bcc
+  #       InstanceType: t2.micro
+  #       NetworkInterfaces:
+  #         - DeviceIndex: 0
+  #           AssociatePublicIpAddress: true
+  #           DeleteOnTermination: true
+  #           SubnetId: !Ref PrivateSubnetC
+
+  PasserelleVPNEC2:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-00f6fe7d6cbb56a78
+      InstanceType: t2.micro
+      KeyName : "ec2wp" 
+      NetworkInterfaces:
+          - DeviceIndex: 0
+            GroupSet:
+              - !Ref VPNSecurityGroup
+            AssociatePublicIpAddress: true
+            DeleteOnTermination: true
+            SubnetId: !Ref PrivateSubnetC
+      UserData: 
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          apt-get update
+          apt install strongswan -y
+          sudo iptables -t nat -A POSTROUTING -s 10.9.141.0/24 -d 10.10.27.0/24 -j MASQUERADE
+          wget https://gist.githubusercontent.com/jnthnm/ac5007dd0c507a26d8eda058a955532e/raw/df57f7328e2b3a6e12642b084c95868f06e07956/ipsec.secrets
+          wget https://gist.githubusercontent.com/jnthnm/bb2764d4cce1b31e7980a39d1a984ed5/raw/877d78c0142932d2ad2f61249e577c0118179ea3/ipsec.conf > /etc/ipsec.conf
+  
+  ElasticIP:
+    Type: AWS::EC2::EIPAssociation
+    Properties: 
+      EIP: 35.180.0.161
+      InstanceId: !Ref PasserelleVPNEC2
+
+  Intranet:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-00f6fe7d6cbb56a78
+      InstanceType: t2.micro
+      KeyName : "ec2wp" 
+      NetworkInterfaces:
+          - DeviceIndex: 0
+            GroupSet:
+              - !Ref IntranetSecurityGroup
+            AssociatePublicIpAddress: true
+            DeleteOnTermination: true
+            SubnetId: !Ref PrivateSubnetC
+      UserData: 
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          apt-get update
+          apt-get upgrade -y
+          apt-get install -y apache2
+  
+  IntranetSecurityGroup: 
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security Group INTRANET 
+      SecurityGroupEgress: 
+        - IpProtocol:  -1
+          CidrIp:  0.0.0.0/0
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 51820
+          ToPort: 51820
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref VPC
+           
+  VPNSecurityGroup: 
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security Group VPN 
+      SecurityGroupEgress: 
+        - IpProtocol:  -1
+          CidrIp:  0.0.0.0/0
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 51820
+          ToPort: 51820
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref VPC
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties: 
+      Tags:
+        - Key: Name
+          Value: 'MainVPC-InternetGateway'    
+  
+  AttachInternetGateway:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  PrivateSubnetC:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: eu-west-3c
+      CidrBlock: 10.0.100.0/24
+      Tags:
+        - Key: Name
+          Value: 'MainVPC-private-AZ-C'
+      VpcId: !Ref VPC
+  
+  AttachPrivateRouteTableC:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTableC
+      SubnetId: !Ref PrivateSubnetC
+  
+  PrivateRouteTableC:
+    Type: AWS::EC2::RouteTable
+    Properties: 
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: MainVPC-route-private-c
+  
+  PrivateRouteC:
+    Type: AWS::EC2::Route
+    Properties: 
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+      RouteTableId: !Ref PrivateRouteTableC

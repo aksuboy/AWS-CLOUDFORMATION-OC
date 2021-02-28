@@ -17,6 +17,18 @@ Parameters:
     Default: WordPressPassword
     Description: Le mdp pour la Database
     # AllowedPattern: ^([a-z0-A-Z9]*)$
+  VolumeName:
+    Description: The name to be used for the EFS volume
+    Type: String
+    Default: myEFSvolume
+  MountPoint:
+    Description: The Linux mount point for the EFS volume
+    Type: String
+    Default: myEFSvolume
+  paramBucketName:
+    Type: String
+    Description: Nom du bucket S3
+
 Resources:
   VPC:
     Type: 'AWS::EC2::VPC'
@@ -31,7 +43,7 @@ Resources:
   RDSInstance:
     Type: "AWS::RDS::DBInstance"
     Properties:
-      MultiAZ: "false"
+      MultiAZ: "true"
       AllocatedStorage: "20"
       DBInstanceClass: "db.t2.micro"
       Engine: "MySQL"
@@ -39,23 +51,34 @@ Resources:
       MasterUsername: !Ref DBUSER
       MasterUserPassword: !Ref DBPASSWORD
       DBSubnetGroupName: !Ref DBServerSubnetGroup
-      # SecurityGroups:
-      #   - !Ref RDSSecurityGroup
-
-  # RDSSecurityGroup: 
-  #   Type:  AWS::EC2::SecurityGroup
-  #   Properties:
-  #     GroupDescription: Groupe de sécurité pour l'instance RDS
-  #     SecurityGroupEgress: 
-  #       - IpProtocol:  -1
-  #         CidrIp:  0.0.0.0/0
-  #     SecurityGroupIngress:
-  #       - IpProtocol: tcp
-  #         FromPort: 80
-  #         ToPort: 80
-  #         CidrIp: 0.0.0.0/0
-  #     VpcId: !Ref VPC    
-
+      VPCSecurityGroups: 
+        - Fn::GetAtt: [ DBSecurityGroup, GroupId ]
+  
+  DBServerSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: "Groupe de Subnet pour le RDS"
+      SubnetIds:
+        - !Ref PrivateSubnetA
+        - !Ref PrivateSubnetB 
+      Tags:
+        - Key: Name 
+          Value: DB-Group-Subnets 
+  
+  DBSecurityGroup: 
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupDescription: "Groupe de securite pour RDS"
+      SecurityGroupEgress: 
+        - IpProtocol:  -1
+          CidrIp:  0.0.0.0/0
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref VPC      
+  
   PublicSubnetA:
     Type: AWS::EC2::Subnet
     Properties:
@@ -76,6 +99,26 @@ Resources:
           Value: 'MainVPC-public-AZ-B'
       VpcId: !Ref VPC
   
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: eu-west-3a
+      CidrBlock: 10.0.3.0/24
+      Tags:
+        - Key: Name
+          Value: 'MainVPC-private-AZ-A'
+      VpcId: !Ref VPC
+
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: eu-west-3b
+      CidrBlock: 10.0.4.0/24
+      Tags:
+        - Key: Name
+          Value: 'MainVPC-private-AZ-B'
+      VpcId: !Ref VPC
+  
   PrivateSubnetC:
     Type: AWS::EC2::Subnet
     Properties:
@@ -90,7 +133,7 @@ Resources:
     Type: AWS::AutoScaling::AutoScalingGroup
     Properties:
       AutoScalingGroupName: EC-WordPress
-      LaunchConfigurationName: !Ref WordpressLaunchConfig
+      LaunchConfigurationName: !Ref WordpressEC2LaunchConfig
       # AvailabilityZones:
       #   - Fn::Select:
       #     - 1
@@ -105,33 +148,82 @@ Resources:
       MaxSize: 4
       MinSize: 2
       TargetGroupARNs:
-        - !Ref WordpressTargetGroup
+        - !Ref WordpressEC2TargetGroup
   
-  WordpressLaunchConfig:
+  # PasserelleVPNEC2:
+  #   Type: AWS::EC2::Instance
+  #   Properties:
+  #       KeyName : "ec2wp" 
+  #       AvailabilityZone: eu-west-3c
+  #       ImageId: ami-02566bd2813f83bcc
+  #       InstanceType: t2.micro
+  #       SecurityGroupIds: 
+  #       - !Ref VPNSecurityGroup
+  #       NetworkInterfaces:
+  #         - DeviceIndex: 0
+  #           AssociatePublicIpAddress: true
+  #           DeleteOnTermination: true
+  #           SubnetId: !Ref PrivateSubnetC
+  
+  # VPNSecurityGroup: 
+  #   Type:  AWS::EC2::SecurityGroup
+  #   Properties:
+  #     GroupDescription: Security Group VPN 
+  #     SecurityGroupEgress: 
+  #       - IpProtocol:  -1
+  #         CidrIp:  0.0.0.0/0
+  #     SecurityGroupIngress:
+  #       - IpProtocol: tcp
+  #         FromPort: 80
+  #         ToPort: 80
+  #         CidrIp: 0.0.0.0/0
+  #       - IpProtocol: tcp
+  #         FromPort: 22
+  #         ToPort: 22
+  #       - IpProtocol: tcp
+  #         FromPort: 443
+  #         ToPort: 443
+  #       - IpProtocol: tcp
+  #         FromPort: 51820
+  #         ToPort: 51820
+  #     VpcId: !Ref VPC
+  
+  WordpressEC2LaunchConfig:
     Type: AWS::AutoScaling::LaunchConfiguration
-    #DependsOn:
+    DependsOn:
+      - FileSystem
+      - RDSInstance
     Properties:
       AssociatePublicIpAddress: true
       LaunchConfigurationName: WP-Launcher
       ImageId: ami-0f4c4d9ba38fd756e
       InstanceType: t2.micro
       SecurityGroups:
-        - !Ref WebSecurityGroup
+        - !Ref InstancesWPSecurityGroup
       KeyName : "ec2wp" 
       UserData: 
         Fn::Base64: !Sub |
           #!/bin/bash
           apt-get update
           apt-get upgrade -y
-          apt install apache2
-          wget https://gist.githubusercontent.com/jnthnm/38e1d0a48acc7e26d6f9bd5f0d16083b/raw/86cacf72ab95939bfe3a6bdeb10b55e6941f98d9/docker-compose.yml -P /root/
-          sed -i 's/nominstance/${RDSInstance.Endpoint.Address}/g' /root/docker-compose.yml
-          sed -i 's/jm/${DBUSER}/g' /root/docker-compose.yml
-          sed -i 's/lol/${DBNAME}/g' /root/docker-compose.yml
-          sed -i 's/projetaws/${DBPASSWORD}/g' /root/docker-compose.yml
+          apt-get install -y nfs-common
+          mkdir /mnt/efs
+          cd /mnt
+          mount -t nfs -o nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2,noresvport ${FileSystem}.efs.eu-west-3.amazonaws.com:/ /mnt/efs
+          cd 
+          wget https://gist.githubusercontent.com/jnthnm/38e1d0a48acc7e26d6f9bd5f0d16083b/raw/848edf6860c16f6816a470c7900776e6be28fb6c/docker-compose.yml -P /root/
+          sed -i 's/nomdomaine/${WordpressEC2LoadBalancer.DNSName}/g' /root/docker-compose.yml
+          sed -i 's/namehostwp/${RDSInstance.Endpoint.Address}/g' /root/docker-compose.yml
+          sed -i 's/nameuserwp/${DBUSER}/g' /root/docker-compose.yml
+          sed -i 's/passworddbwp/${DBPASSWORD}/g' /root/docker-compose.yml
+          sed -i 's/namedbwp/${DBNAME}/g' /root/docker-compose.yml 
+          cd /root
           docker-compose up -d
+          sed -i "91idefine( 'AS3CF_AWS_ACCESS_KEY_ID', '${S3UserAccessKey}' );" /mnt/efs/wp_data/wp-config.php 
+          sed -i "92idefine( 'AS3CF_AWS_SECRET_ACCESS_ID', '${S3UserAccessKey.SecretAccessKey}' );" /mnt/efs/wp_data/wp-config.php
+          sed -i "93idefine( 'AS3CF_AWS_SECRET_ACCESS_ID', '${S3Bucket}' );" /mnt/efs/wp_data/wp-config.php  
   
-  WordpressTargetGroup:
+  WordpressEC2TargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
       Name: WP-Target
@@ -139,10 +231,11 @@ Resources:
       Protocol: HTTP
       VpcId: !Ref VPC
   
-  WordpressLoadBalancer:
+  ### ELB LOADBALANCER ###
+  WordpressEC2LoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
-      Name: WP-Load-Balancer
+      Name: WP-EC2
       Type: application
       Scheme: internet-facing
       SecurityGroups:
@@ -151,25 +244,17 @@ Resources:
         - !Ref PublicSubnetA
         - !Ref PublicSubnetB
   
-  LoadBlancerListener:
+  LoadBalancerListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
-      LoadBalancerArn: !Ref WordpressLoadBalancer
+      LoadBalancerArn: !Ref WordpressEC2LoadBalancer
       Port: 80
       Protocol: HTTP
       DefaultActions:
         - Type: forward
-          TargetGroupArn: !Ref WordpressTargetGroup
+          TargetGroupArn: !Ref WordpressEC2TargetGroup
 
-  DBServerSubnetGroup:
-    Type: AWS::RDS::DBSubnetGroup
-    Properties:
-      DBSubnetGroupDescription: "Groupe de Subnet pour le RDS"
-      SubnetIds:
-        - !Ref PublicSubnetA
-        - !Ref PublicSubnetB    
-
-  WebSecurityGroup: 
+  InstancesWPSecurityGroup: 
     Type:  AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Website EC2 security group 
@@ -181,6 +266,10 @@ Resources:
           FromPort: 80
           ToPort: 80
           CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
       VpcId: !Ref VPC
     
   LoadBalancerSecurityGroup:
@@ -188,17 +277,82 @@ Resources:
     Properties:
       GroupDescription: Enable port 80 HTTP
       VpcId: !Ref VPC
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
       SecurityGroupIngress:
          - IpProtocol: tcp
            FromPort: 80
            ToPort: 80
            CidrIp: 0.0.0.0/0
- 
- ######################################ELB######################################
-#LaunchConfiguration de l'autoscaling
-#Launch Configuration est une configuration générique qui détaille le type de machines et leurs paramètres
+  
+  MountTargetSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId:
+        Ref: VPC
+      GroupDescription: Security group for mount target
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: '2049'
+        ToPort: '2049'
+        CidrIp: 0.0.0.0/0
 
-######################################ROUTES######################################
+  MountTargetOne:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId:
+        Ref: FileSystem
+      SubnetId: !Ref PublicSubnetA
+      SecurityGroups:
+      - Ref: MountTargetSecurityGroup
+  
+  MountTargetTwo:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId:
+        Ref: FileSystem
+      SubnetId: !Ref PublicSubnetB
+      SecurityGroups:
+      - Ref: MountTargetSecurityGroup
+
+  FileSystem:
+    Type: AWS::EFS::FileSystem
+    Properties:
+      PerformanceMode: generalPurpose
+      FileSystemTags:
+      - Key: Name
+        Value:
+          Ref: VolumeName
+  
+  S3Bucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      AccessControl: BucketOwnerFullControl
+      BucketName: !Ref paramBucketName
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+  S3User:
+    Type: AWS::IAM::User
+    Properties:
+      Policies:
+        - PolicyName: bucket-access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action:
+              - s3:*
+              Resource:
+                - !Sub arn:aws:s3:::${S3Bucket}
+                - !Sub arn:aws:s3:::${S3Bucket}/*
+  S3UserAccessKey:
+    Type: AWS::IAM::AccessKey
+    Properties:
+      UserName: !Ref S3User
+   
   InternetGateway:
     Type: AWS::EC2::InternetGateway
     Properties: 
@@ -212,12 +366,23 @@ Resources:
       VpcId: !Ref VPC
       InternetGatewayId: !Ref InternetGateway
 
-  ### SubnetPublicA
   AttachPublicRouteTableA:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
       RouteTableId: !Ref PublicRouteTableA
       SubnetId: !Ref PublicSubnetA
+  
+  AttachPublicRouteTableB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTableB
+      SubnetId: !Ref PublicSubnetB
+
+  AttachPrivateRouteTableC:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTableC
+      SubnetId: !Ref PrivateSubnetC
 
   PublicRouteTableA:
     Type: AWS::EC2::RouteTable
@@ -227,151 +392,65 @@ Resources:
         - Key: Name
           Value: MainVPC-route-public-a
   
+  PublicRouteTableB:
+    Type: AWS::EC2::RouteTable
+    Properties: 
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: MainVPC-route-public-b
+  
+  PrivateRouteTableC:
+    Type: AWS::EC2::RouteTable
+    Properties: 
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: MainVPC-route-private-c
+  
   PublicRouteA:
     Type: AWS::EC2::Route
     Properties: 
       DestinationCidrBlock: 0.0.0.0/0
       GatewayId: !Ref InternetGateway
       RouteTableId: !Ref PublicRouteTableA
-
-######################################INSTANCES######################################
-
-######################################VPN######################################
-
- # PasserelleVPNEC2:
-  #   Type: AWS::EC2::Instance
-  #   Properties:
-        # KeyName : "ec2wp" 
-  #     AvailabilityZone: eu-west-3c
-  #     ImageId: ami-00375c8c4ab66c43b
-  #     InstanceType: t2.micro
-  #     # SecurityGroupIds:
-  #     #   - !Ref SSHSecurityGroup
-  #     #   - !Ref ServerSecurityGroup
-  #     GroupSet: 
-  #             - Ref: "EC2SecurityGroupSSH"
-  #             - Ref: "EC2SecurityGroupHTTP"
-  #     SubnetId: !Ref PrivateSubnetC
-
-  # Intranet:
-  #   Type: AWS::EC2::Instance
-  #   Properties:
-  # KeyName : "ec2wp"
-  #     AvailabilityZone: eu-west-3c
-  #     ImageId: ami-02566bd2813f83bcc
-  #     InstanceType: t2.micro
-  #     # SecurityGroupIds:
-  #     #   - !Ref SSHSecurityGroup
-  #     #   - !Ref ServerSecurityGroup
-  #     GroupSet: 
-  #             - Ref: "EC2SecurityGroupSSH"
-  #             - Ref: "EC2SecurityGroupHTTP"
-  #     SubnetId: !Ref PrivateSubnetC
-      # UserData: 
-      #   Fn::Base64: !Sub |
-      #     #!/bin/bash
-      #     apt-get update
-      #     apt-get upgrade -y
-      #     apt install apache2 
-
-#######################################################BUCKET S3##############################################################################################################
   
-  #S3Bucket:
-  #  Type: AWS::S3::Bucket
-  #  DeletionPolicy: Retain
-  #  Properties:
-  #    BucketName: MonBucket
-
-
-
-################################################################################################################################################################################
-# EC2SecurityGroupSSH:
-  #   Type: AWS::EC2::SecurityGroup
-  #   Properties:
-  #     GroupDescription: Enable port 22 SSH
-  #     VpcId: !Ref VPC
-  #     SecurityGroupIngress:
-  #       - IpProtocol: tcp
-  #         FromPort: 22
-  #         ToPort: 22
-  #         CidrIp: 0.0.0.0/0
-
-  # EC2SecurityGroupHTTP:
-  #   Type: AWS::EC2::SecurityGroup
-  #   Properties:
-  #     GroupDescription: Enable port 80 HTTP
-  #     VpcId: !Ref VPC
-  #     SecurityGroupIngress:
-  #        - IpProtocol: tcp
-  #          FromPort: 80
-  #          ToPort: 80
-  #          CidrIp: 0.0.0.0/0
-
-   # SecondWPServ:
-  #   Type: AWS::EC2::Instance
-  #   Properties:
-  #     KeyName : "ec2wp" 
-  #     AvailabilityZone: eu-west-3b
-  #     ImageId: ami-0f4c4d9ba38fd756e
-  #     InstanceType: t2.micro
-  # #     SecurityGroupIds:
-  # # #       - !Ref SSHSecurityGroup
-  # # #       - !Ref ServerSecurityGroup
-  #     NetworkInterfaces:
-  #       - AssociatePublicIpAddress: "true"
-  #         DeviceIndex: "0"
-  #         GroupSet: 
-  #             - Ref: "EC2SecurityGroupSSH"
-  #             - Ref: "EC2SecurityGroupHTTP"
-  #         SubnetId: !Ref PublicSubnetB
-
-  ######################################INSTANCES######################################
-
-  # FirstWPServ:
-  #   Type: AWS::EC2::Instance
-  #   Properties:
-  #     KeyName : "ec2wp" 
-  #     AvailabilityZone: eu-west-3a
-  #     ImageId: ami-0f4c4d9ba38fd756e
-  #     InstanceType: t2.micro
-  #     NetworkInterfaces:
-  #       - AssociatePublicIpAddress: "true"
-  #         DeviceIndex: "0"
-  #         GroupSet: 
-  #             - Ref: "EC2SecurityGroupSSH"
-  #             - Ref: "EC2SecurityGroupHTTP"
-  #         SubnetId: !Ref PublicSubnetA       
-  #     UserData: 
-  #       Fn::Base64: !Sub |
-  #         #!/bin/bash
-  #         apt-get update
-  #         apt-get upgrade -y
-  #         wget https://gist.githubusercontent.com/jnthnm/38e1d0a48acc7e26d6f9bd5f0d16083b/raw/86cacf72ab95939bfe3a6bdeb10b55e6941f98d9/docker-compose.yml -P /root/
-  #         sed -i 's/nominstance/${RDSInstance.Endpoint.Address}/g' /root/docker-compose.yml
-  #         sed -i 's/jm/${DBUSER}/g' /root/docker-compose.yml
-  #         sed -i 's/lol/${DBNAME}/g' /root/docker-compose.yml
-  #         sed -i 's/projetaws/${DBPASSWORD}/g' /root/docker-compose.yml
-
-######################################subnets######################################
-  ## SubnetPublicB
-  # AttachPublicRouteTableB:
-  #   Type: AWS::EC2::SubnetRouteTableAssociation
-  #   Properties:
-  #     RouteTableId: !Ref PublicRouteTableB
-  #     SubnetId: !Ref PublicSubnetB
-
-  # PublicRouteTableB:
-  #   Type: AWS::EC2::RouteTable
-  #   Properties: 
-  #     VpcId: !Ref VPC
-  #     Tags:
-  #       - Key: Name
-  #         Value: MainVPC-route-public-b
+  PublicRouteB:
+    Type: AWS::EC2::Route
+    Properties: 
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+      RouteTableId: !Ref PublicRouteTableB
   
-  # PublicRouteB:
-  #   Type: AWS::EC2::Route
-  #   Properties: 
-  #     DestinationCidrBlock: 0.0.0.0/0
-  #     GatewayId: !Ref InternetGateway
-  #     RouteTableId: !Ref PublicRouteTableB
+  PrivateRouteC:
+    Type: AWS::EC2::Route
+    Properties: 
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+      RouteTableId: !Ref PrivateRouteTableC
+
+Outputs:
+    BucketName:
+      Value: !Ref 'S3Bucket'
+      Description: Name of the Amazon S3 bucket.
+    S3BucketSecureURL:
+      Value: !Join ['', ['https://', !GetAtt [S3Bucket, DomainName]]]
+      Description: Domain Name of the Amazon S3 bucket
+    AccessKeyID:
+      Value: !Ref S3UserAccessKey
+    SecretAccessKey:
+      Value: !GetAtt S3UserAccessKey.SecretAccessKey
+    BucketName:
+      Value: !Ref S3Bucket
+    User:
+      Value: !Ref S3User
+
+
+  
+
+
+  
+
+
+
 

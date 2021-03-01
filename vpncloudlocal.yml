@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: 2010-09-09
 Description: >-
-  test
+  VPN StrongSwan Avec EC2 AWS 
 Resources:
   VPC:
     Type: 'AWS::EC2::VPC'
@@ -92,10 +92,6 @@ Resources:
         - IpProtocol: tcp
           FromPort: 443
           ToPort: 443
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
-          FromPort: 51820
-          ToPort: 51820
           CidrIp: 0.0.0.0/0
       VpcId: !Ref VPC
            

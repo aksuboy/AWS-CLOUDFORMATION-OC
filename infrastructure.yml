@@ -78,7 +78,9 @@ Resources:
           ToPort: 3306
           CidrIp: 0.0.0.0/0
       VpcId: !Ref VPC      
-  
+      
+ ################################# SUBNET  ################################# 
+
   PublicSubnetA:
     Type: AWS::EC2::Subnet
     Properties:
@@ -149,45 +151,7 @@ Resources:
       MinSize: 2
       TargetGroupARNs:
         - !Ref WordpressEC2TargetGroup
-  
-  # PasserelleVPNEC2:
-  #   Type: AWS::EC2::Instance
-  #   Properties:
-  #       KeyName : "ec2wp" 
-  #       AvailabilityZone: eu-west-3c
-  #       ImageId: ami-02566bd2813f83bcc
-  #       InstanceType: t2.micro
-  #       SecurityGroupIds: 
-  #       - !Ref VPNSecurityGroup
-  #       NetworkInterfaces:
-  #         - DeviceIndex: 0
-  #           AssociatePublicIpAddress: true
-  #           DeleteOnTermination: true
-  #           SubnetId: !Ref PrivateSubnetC
-  
-  # VPNSecurityGroup: 
-  #   Type:  AWS::EC2::SecurityGroup
-  #   Properties:
-  #     GroupDescription: Security Group VPN 
-  #     SecurityGroupEgress: 
-  #       - IpProtocol:  -1
-  #         CidrIp:  0.0.0.0/0
-  #     SecurityGroupIngress:
-  #       - IpProtocol: tcp
-  #         FromPort: 80
-  #         ToPort: 80
-  #         CidrIp: 0.0.0.0/0
-  #       - IpProtocol: tcp
-  #         FromPort: 22
-  #         ToPort: 22
-  #       - IpProtocol: tcp
-  #         FromPort: 443
-  #         ToPort: 443
-  #       - IpProtocol: tcp
-  #         FromPort: 51820
-  #         ToPort: 51820
-  #     VpcId: !Ref VPC
-  
+
   WordpressEC2LaunchConfig:
     Type: AWS::AutoScaling::LaunchConfiguration
     DependsOn:

@@ -38,20 +38,31 @@ Resources:
             AssociatePublicIpAddress: true
             DeleteOnTermination: true
             SubnetId: !Ref PrivateSubnetC
+            PrivateIpAddress: 10.0.100.196
       UserData: 
         Fn::Base64: !Sub |
           #!/bin/bash
           apt-get update
           apt install strongswan -y
           sudo iptables -t nat -A POSTROUTING -s 10.9.141.0/24 -d 10.10.27.0/24 -j MASQUERADE
-          wget https://gist.githubusercontent.com/jnthnm/ac5007dd0c507a26d8eda058a955532e/raw/df57f7328e2b3a6e12642b084c95868f06e07956/ipsec.secrets
-          wget https://gist.githubusercontent.com/jnthnm/bb2764d4cce1b31e7980a39d1a984ed5/raw/877d78c0142932d2ad2f61249e577c0118179ea3/ipsec.conf > /etc/ipsec.conf
+          sed -i '/net.ipv4.ip_forward=1/s/^#//g' /etc/sysctl.conf
+          sed -i '/net.ipv4.conf.all.accept_redirect=0/s/^#//g' /etc/sysctl.conf
+          sed -i '/net.ipv4.conf.all.send_redirects=0/s/^#//g' /etc/sysctl.conf
+          cd /etc
+          rm -rf ipsec.secrets
+          rm -rf ipsec.conf
+          wget https://gist.githubusercontent.com/jnthnm/ac5007dd0c507a26d8eda058a955532e/raw/c7eac886c2704c274d91bede308a51fd76fc7d79/ipsec.secrets
+          wget https://gist.githubusercontent.com/jnthnm/bb2764d4cce1b31e7980a39d1a984ed5/raw/ec21d9d2edb9f55fbdf64e2f7871c70c8be5af43/ipsec.conf
+          cd
+          cd /var/lib/strongswan
+          wget https://gist.githubusercontent.com/jnthnm/0e0defd0cc3a1635a13c0b8680084825/raw/16d90abc0874ea02e22698e3e4ec03c50f2e1412/ipsec.conf.inc
   
   ElasticIP:
     Type: AWS::EC2::EIPAssociation
     Properties: 
-      EIP: 35.180.0.161
+      EIP: 13.36.68.89
       InstanceId: !Ref PasserelleVPNEC2
+      NetworkInterfaceId: !Ref PasserelleVPNEC2
 
   Intranet:
     Type: AWS::EC2::Instance

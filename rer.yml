@@ -1,0 +1,21 @@
+version: "3"
+services:
+  wordpress: jnthnm/awsprojetwp:1.0
+   image: 
+   ports: 
+     - 80:80
+   restart: always
+   user: xfs
+   command: >
+     /bin/sh -c '
+     wp core install --path="/var/www/html" --url="http://nomdomaine" --title="Local Wordpress By Docker" --admin_user=adminadmin_password=secret --admin_email=foo@bar.com --allow-root
+     
+     wp plugin install amazon-s3-and-cloudfront --activate --allow-root
+     '
+   environment:
+     - WORDPRESS_DB_HOST=namehostwp
+     - WORDPRESS_DB_USER=nameuserwp
+     - WORDPRESS_DB_PASSWORD=passworddbwp
+     - WORDPRESS_DB_NAME=namedbwp
+   volumes:
+     - /mnt/efs/wp_data:/var/www/html

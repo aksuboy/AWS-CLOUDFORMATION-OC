@@ -155,8 +155,8 @@ Resources:
   WordpressEC2LaunchConfig:
     Type: AWS::AutoScaling::LaunchConfiguration
     DependsOn:
-      - FileSystem
       - RDSInstance
+      - FileSystem
     Properties:
       AssociatePublicIpAddress: true
       LaunchConfigurationName: WP-Launcher
@@ -175,7 +175,7 @@ Resources:
           cd /mnt
           mount -t nfs -o nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2,noresvport ${FileSystem}.efs.eu-west-3.amazonaws.com:/ /mnt/efs
           cd 
-          wget https://gist.githubusercontent.com/jnthnm/38e1d0a48acc7e26d6f9bd5f0d16083b/raw/848edf6860c16f6816a470c7900776e6be28fb6c/docker-compose.yml -P /root/
+          wget https://gist.githubusercontent.com/jnthnm/7e19aed55ad5709a614b3e84b3473597/raw/0ca34c0a709617682d1e6476369bd4d78400ebf9/docker-compose.yml -P /root/
           sed -i 's/nomdomaine/${WordpressEC2LoadBalancer.DNSName}/g' /root/docker-compose.yml
           sed -i 's/namehostwp/${RDSInstance.Endpoint.Address}/g' /root/docker-compose.yml
           sed -i 's/nameuserwp/${DBUSER}/g' /root/docker-compose.yml

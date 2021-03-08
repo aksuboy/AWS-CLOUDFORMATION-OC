@@ -48,21 +48,13 @@ Resources:
           sed -i '/net.ipv4.ip_forward=1/s/^#//g' /etc/sysctl.conf
           sed -i '/net.ipv4.conf.all.accept_redirect=0/s/^#//g' /etc/sysctl.conf
           sed -i '/net.ipv4.conf.all.send_redirects=0/s/^#//g' /etc/sysctl.conf
-          cd /etc
-          rm -rf ipsec.secrets
-          rm -rf ipsec.conf
-          wget https://gist.githubusercontent.com/jnthnm/ac5007dd0c507a26d8eda058a955532e/raw/c7eac886c2704c274d91bede308a51fd76fc7d79/ipsec.secrets
-          wget https://gist.githubusercontent.com/jnthnm/bb2764d4cce1b31e7980a39d1a984ed5/raw/ec21d9d2edb9f55fbdf64e2f7871c70c8be5af43/ipsec.conf
-          cd
-          cd /var/lib/strongswan
-          wget https://gist.githubusercontent.com/jnthnm/0e0defd0cc3a1635a13c0b8680084825/raw/16d90abc0874ea02e22698e3e4ec03c50f2e1412/ipsec.conf.inc
-  
-  ElasticIP:
-    Type: AWS::EC2::EIPAssociation
-    Properties: 
-      EIP: 13.36.68.89
-      InstanceId: !Ref PasserelleVPNEC2
-      NetworkInterfaceId: !Ref PasserelleVPNEC2
+        
+  # ElasticIP:
+  #   Type: AWS::EC2::EIPAssociation
+  #   Properties: 
+  #     EIP: 13.36.68.89
+  #     InstanceId: !Ref PasserelleVPNEC2
+  #     NetworkInterfaceId: !Ref PasserelleVPNEC2
 
   Intranet:
     Type: AWS::EC2::Instance

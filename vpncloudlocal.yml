@@ -12,23 +12,10 @@ Resources:
         - Key: Name
           Value: 'VPC'
   
-  # PasserelleVPNEC2:
-  #   Type: AWS::EC2::Instance
-  #   Properties:
-  #       KeyName : "ec2wp" 
-  #       AvailabilityZone: eu-west-3c
-  #       ImageId: ami-02566bd2813f83bcc
-  #       InstanceType: t2.micro
-  #       NetworkInterfaces:
-  #         - DeviceIndex: 0
-  #           AssociatePublicIpAddress: true
-  #           DeleteOnTermination: true
-  #           SubnetId: !Ref PrivateSubnetC
-
   PasserelleVPNEC2:
     Type: AWS::EC2::Instance
     Properties:
-      ImageId: ami-00f6fe7d6cbb56a78
+      ImageId: ami-09ea48ee08b5fd32c
       InstanceType: t2.micro
       KeyName : "ec2wp" 
       NetworkInterfaces:
@@ -43,12 +30,7 @@ Resources:
         Fn::Base64: !Sub |
           #!/bin/bash
           apt-get update
-          apt install strongswan -y
-          sudo iptables -t nat -A POSTROUTING -s 10.9.141.0/24 -d 10.10.27.0/24 -j MASQUERADE
-          sed -i '/net.ipv4.ip_forward=1/s/^#//g' /etc/sysctl.conf
-          sed -i '/net.ipv4.conf.all.accept_redirect=0/s/^#//g' /etc/sysctl.conf
-          sed -i '/net.ipv4.conf.all.send_redirects=0/s/^#//g' /etc/sysctl.conf
-        
+     
   # ElasticIP:
   #   Type: AWS::EC2::EIPAssociation
   #   Properties: 

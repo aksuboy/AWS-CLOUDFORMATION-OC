@@ -137,12 +137,12 @@ Resources:
       AutoScalingGroupName: EC-WordPress
       LaunchConfigurationName: !Ref WordpressEC2LaunchConfig
       # AvailabilityZones:
-      #   - Fn::Select:
-      #     - 1
-      #     - Fn::GetAZs: !Ref AWS::Region 
-      #   - Fn::Select:
-      #     - 2
-      #     - Fn::GetAZs: !Ref AWS::Region 
+      #   # - Fn::Select:
+      #   #   - 1
+      #   #   - Fn::GetAZs: !Ref AWS::Region 
+      #   # - Fn::Select:
+      #   #   - 2
+      #   #   - Fn::GetAZs: !Ref AWS::Region 
       VPCZoneIdentifier:
         - !Ref PublicSubnetA
         - !Ref PublicSubnetB
@@ -171,30 +171,19 @@ Resources:
           apt-get update
           apt-get upgrade -y
           apt-get install -y nfs-common
-          chmod +x /usr/local/bin/docker-compose
           cd /mnt/
           mkdir efs
           cd /efs/
           mount -t nfs -o nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2,noresvport ${FileSystem}.efs.eu-west-3.amazonaws.com:/ /mnt/efs
-          sleep 20;
-          wget https://gist.githubusercontent.com/jnthnm/7e19aed55ad5709a614b3e84b3473597/raw/cc7704eac383af2cda8310e8c087afaba0f16b96/docker-compose.yml /mnt/efs/docker-compose.yml
-          sed -i 's/namehostwp/${RDSInstance.Endpoint.Address}/g' docker-compose.yml
-          sed -i 's/nameuserwp/${DBUSER}/g' docker-compose.yml
-          sed -i 's/passworddbwp/${DBPASSWORD}/g' docker-compose.yml
-          sed -i 's/namedbwp/${DBNAME}/g' docker-compose.yml 
+          wget https://gist.githubusercontent.com/jnthnm/7e19aed55ad5709a614b3e84b3473597/raw/58a4879b1b2f245b58cf642e65e7a553e00139e4/docker-compose.yml /mnt/efs/docker-compose.yml
           docker-compose up -d
-          sleep 10;
-          docker exec mnt_wordpress_1 curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar
-          docker exec mnt_wordpress_1 chmod +x wp-cli.phar 
-          docker exec mnt_wordpress_1 mv wp-cli.phar /usr/local/bin/wp
-          docker exec mnt_wordpress_1 wp core install --path="/var/www/html" --url="http://${WordpressEC2LoadBalancer.DNSName}" --title="Example" --admin_user=jm --admin_password=lol --admin_email=nknlol75@gmail.com --allow-root
+          docker exec mnt_wordpress_1 wp config create --dbname="${DBNAME}" --dbuser="${DBUSER}" --dbpass="${DBPASSWORD}" --dbhost="${RDSInstance.Endpoint.Address}"
+          docker exec mnt_wordpress_1 wp core install --path="/var/www/html" --url="http://${WordpressEC2LoadBalancer.DNSName}" --title="Exampleee" --admin_user=jmz --admin_password=secret --admin_email=nknlol75@gmail.com --allow-root
           docker exec mnt_wordpress_1 wp plugin install amazon-s3-and-cloudfront --activate --allow-root
-          cd wp_data/
           sed -i "83idefine( 'AS3CF_AWS_ACCESS_KEY_ID', '${S3UserAccessKey}' );" wp-config.php 
           sed -i "84idefine( 'AS3CF_AWS_SECRET_ACCESS_ID', '${S3UserAccessKey.SecretAccessKey}' );" wp-config.php
           sed -i "85idefine( 'AS3CF_AWS_SECRET_ACCESS_ID', '${S3Bucket}' );" wp-config.php 
-          # sed -i "86idefine( 'WP_HOME', '${WordpressEC2LoadBalancer.'); wp-config.php
-          # sed -i "87idefine( 'WP_SITEURL', '$'); wp-config.php
+       
   WordpressEC2TargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:

@@ -89,3 +89,20 @@ volumes:
   db_data:
   # vstm: add shared volume
   wp_data:
+
+
+
+     # sed -i "86idefine( 'WP_HOME', '${WordpressEC2LoadBalancer.DNSName}' );" wp-config.php
+          # sed -i "87idefine( 'WP_SITEURL', '${WordpressEC2LoadBalancer.DNSName}' );" wp-config.php
+          docker exec mnt_wordpress_1 curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar
+          docker exec mnt_wordpress_1 chmod +x wp-cli.phar 
+          docker exec mnt_wordpress_1 mv wp-cli.phar /usr/local/bin/wp
+
+  sed -i 's/namehostwp/${RDSInstance.Endpoint.Address}/g' docker-compose.yml
+          sed -i 's/nameuserwp/${DBUSER}/g' docker-compose.yml
+          sed -i 's/passworddbwp/${DBPASSWORD}/g' docker-compose.yml
+          sed -i 's/namedbwp/${DBNAME}/g' docker-compose.yml 
+            cd wp_data/
+          sed -i "83idefine( 'AS3CF_AWS_ACCESS_KEY_ID', '${S3UserAccessKey}' );" wp-config.php 
+          sed -i "84idefine( 'AS3CF_AWS_SECRET_ACCESS_ID', '${S3UserAccessKey.SecretAccessKey}' );" wp-config.php
+          sed -i "85idefine( 'AS3CF_AWS_SECRET_ACCESS_ID', '${S3Bucket}' );" wp-config.php 

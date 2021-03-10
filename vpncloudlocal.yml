@@ -12,10 +12,22 @@ Resources:
         - Key: Name
           Value: 'VPC'
   
+  ElasticIPAddress:
+    Type: AWS::EC2::EIPAssociation
+    Properties: 
+      EIP: !Ref MyEIP
+      InstanceId: !Ref PasserelleVPNEC2
+      NetworkInterfaceId: !Ref PasserelleVPNEC2
+
+  # MyEIP:
+  #   Type: AWS::EC2::EIP
+  #   Properties:
+  #     InstanceId: !Ref PasserelleVPNEC2
+
   PasserelleVPNEC2:
     Type: AWS::EC2::Instance
     Properties:
-      ImageId: ami-09ea48ee08b5fd32c
+      ImageId: ami-05092e4ed8073405a
       InstanceType: t2.micro
       KeyName : "ec2wp" 
       NetworkInterfaces:
@@ -29,15 +41,9 @@ Resources:
       UserData: 
         Fn::Base64: !Sub |
           #!/bin/bash
-          apt-get update
-     
-  # ElasticIP:
-  #   Type: AWS::EC2::EIPAssociation
-  #   Properties: 
-  #     EIP: 13.36.68.89
-  #     InstanceId: !Ref PasserelleVPNEC2
-  #     NetworkInterfaceId: !Ref PasserelleVPNEC2
+          sudo apt update
 
+     
   Intranet:
     Type: AWS::EC2::Instance
     Properties:

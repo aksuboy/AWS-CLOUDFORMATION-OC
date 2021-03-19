@@ -1,0 +1,272 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  AWS Projet OC
+
+Resources:
+  VPC:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: 'VPC'
+  
+############################################ SECURITY GROUPS ############################################  
+
+  InstancesWPSecurityGroup: 
+    Type:  AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Website EC2 security group 
+      SecurityGroupEgress: 
+        - IpProtocol:  -1
+          CidrIp:  0.0.0.0/0
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref VPC
+    
+  LoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable port 80 HTTP
+      VpcId: !Ref VPC
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      SecurityGroupIngress:
+         - IpProtocol: tcp
+           FromPort: 80
+           ToPort: 80
+           CidrIp: 0.0.0.0/0
+
+ ############################################ SUBNETS ############################################  
+
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: eu-west-3a
+      CidrBlock: 10.0.100.0/24
+      Tags:
+        - Key: Name
+          Value: 'MainVPC-public-AZ-A'
+      VpcId: !Ref VPC
+
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: eu-west-3b
+      CidrBlock: 10.0.101.0/24
+      Tags:
+        - Key: Name
+          Value: 'MainVPC-public-AZ-B'
+      VpcId: !Ref VPC
+  
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: eu-west-3a
+      CidrBlock: 10.0.3.0/24
+      Tags:
+        - Key: Name
+          Value: 'MainVPC-private-AZ-A'
+      VpcId: !Ref VPC
+
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: eu-west-3b
+      CidrBlock: 10.0.4.0/24
+      Tags:
+        - Key: Name
+          Value: 'MainVPC-private-AZ-B'
+      VpcId: !Ref VPC
+  
+############################################ CLOUDWATCH ############################################  
+
+  CPUAlarmHigh:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: CPUAlarm 
+      AlarmActions:
+      - Ref: AlarmsSnsTopic
+      MetricName: CPUUtilisation
+      Namespace: AWS/EC2
+      Statistic: Average
+      Period: '300'
+      EvaluationPeriods: '1'
+      Threshold: '80'
+      ComparisonOperator: GreaterThanThreshold
+  
+  AlarmsSnsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      Subscription:
+        - Endpoint: moriennejonathan@gmail.com
+          Protocol: "email"
+  
+  MySubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Endpoint: moriennejonathan@gmail.com
+      Protocol: email
+      TopicArn: !Ref AlarmsSnsTopic
+
+############################################ WORDPRESS SCALING GROUP ############################################
+
+  WordpressScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: EC-WordPress
+      LaunchConfigurationName: !Ref WordpressEC2LaunchConfig
+      VPCZoneIdentifier:
+        - !Ref PublicSubnetA
+        - !Ref PublicSubnetB
+      DesiredCapacity: 2
+      MaxSize: 4
+      MinSize: 2
+      TargetGroupARNs:
+        - !Ref WordpressEC2TargetGroup
+      
+  WordpressEC2LaunchConfig:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      AssociatePublicIpAddress: true
+      LaunchConfigurationName: WP-Launcher
+      ImageId: ami-0f4c4d9ba38fd756e
+      InstanceType: t2.micro
+      SecurityGroups:
+        - !Ref InstancesWPSecurityGroup
+      KeyName : "ec2wp" 
+      UserData: 
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          apt-get update
+          apt-get upgrade -y
+          apt-get install -y nfs-common
+            
+  WordpressEC2TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: WP-Target
+      Port: 80
+      Protocol: HTTP
+      VpcId: !Ref VPC
+      TargetGroupAttributes:
+      - Key: stickiness.enabled
+        Value: true
+
+############################################ ELB ############################################
+
+  WordpressEC2LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: WP-EC2
+      Type: application
+      Scheme: internet-facing
+      SecurityGroups:
+        - !Ref LoadBalancerSecurityGroup
+      Subnets:
+        - !Ref PublicSubnetA
+        - !Ref PublicSubnetB
+      
+  LoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref WordpressEC2LoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref WordpressEC2TargetGroup
+  
+############################################ INTERNET GATEWAY ############################################   
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties: 
+      Tags:
+        - Key: Name
+          Value: 'MainVPC-InternetGateway'
+  
+  AttachInternetGateway:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  AttachPublicRouteTableA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTableA
+      SubnetId: !Ref PublicSubnetA
+  
+  AttachPublicRouteTableB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTableB
+      SubnetId: !Ref PublicSubnetB
+
+  PublicRouteTableA:
+    Type: AWS::EC2::RouteTable
+    Properties: 
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: MainVPC-route-public-a
+  
+  PublicRouteTableB:
+    Type: AWS::EC2::RouteTable
+    Properties: 
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: MainVPC-route-public-b
+  
+  PublicRouteA:
+    Type: AWS::EC2::Route
+    Properties: 
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+      RouteTableId: !Ref PublicRouteTableA
+  
+  PublicRouteB:
+    Type: AWS::EC2::Route
+    Properties: 
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+      RouteTableId: !Ref PublicRouteTableB
+  
+
+
+
+  
+apt-get install stress-ng
+stress-ng --cpu 3 --vm 1 --hdd 1 --fork 1 --switch 1 --timeout 40 --metrics
+
+
+
+
+        sed -i "68idefine( 'AS3CF_AWS_ACCESS_KEY_ID', '${S3UserAccessKey}' );" wp_data/wp-config.php
+          sed -i "69idefine( 'AS3CF_AWS_SECRET_ACCESS_ID', '${S3UserAccessKey.SecretAccessKey}' );" wp_data/wp-config.php
+          sed -i "70idefine( 'AS3CF_BUCKET', '${S3Bucket}' );" wp_data/wp-config.php
+          sed -i "71idefine( 'AS3CF_REGION', 'eu-west-3' );" wp_data/wp-config.php
+          sed -i "72idefine( 'AS3CF_SETTINGS', serialize( array(" wp_data/wp-config.php
+          sed -i "73i 'copy-to-s3' => true," wp_data/wp-config.php
+          sed -i "74i 'serve-from-s3' => true," wp_data/wp-config.php
+          sed -i "75i 'remove-local-file' => true," wp_data/wp-config.php
+          sed -i "76i ) ) );" wp_data/wp-config.php
+
+
+
+
+          sed -i "68idefine( 'AS3CF_SETTINGS', serialize( array('provider' => 'aws','access-key-id' => '${S3UserAccessKey}','secret-access-key' => '${S3UserAccessKey.SecretAccessKey}','bucket' => '${S3Bucket}','region' => 'eu-west-3','copy-to-s3' => true,'serve-from-s3' => true ,'remove-local-file' => true,) ) );" wp_data/wp-config.php
+
+

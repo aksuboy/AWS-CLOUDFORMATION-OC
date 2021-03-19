@@ -106,3 +106,46 @@ volumes:
           sed -i "83idefine( 'AS3CF_AWS_ACCESS_KEY_ID', '${S3UserAccessKey}' );" wp-config.php 
           sed -i "84idefine( 'AS3CF_AWS_SECRET_ACCESS_ID', '${S3UserAccessKey.SecretAccessKey}' );" wp-config.php
           sed -i "85idefine( 'AS3CF_AWS_SECRET_ACCESS_ID', '${S3Bucket}' );" wp-config.php 
+
+
+
+          # sed -i "23idefine( 'COOKIE_DOMAIN',$_SERVER['HTTP_HOST']); /mnt/wp_data/wp-config.php
+
+
+              myip=`curl ifconfig.me`
+          sed -i 's/ippublic/$myip/g' /etc/wireguard/wg0.conf
+          sudo wg
+
+           while [ ! -f /mnt/wp_data/wp-config.php ]; do sleep 1; done
+
+
+          sed -i "20idefine( 'AS3CF_AWS_ACCESS_KEY_ID', '${S3UserAccessKey}' );" /mnt/wp_data/wp-config.php
+          sed -i "21idefine( 'AS3CF_AWS_SECRET_ACCESS_ID', '${S3UserAccessKey.SecretAccessKey}' );" /mnt/wp_data/wp-config.php
+          sed -i "22idefine( 'AS3CF_BUCKET', '${S3Bucket}' );" /mnt/wp_data/wp-config.php
+          sed -i "24idefine( 'AS3CF_SETTINGS', serialize( array(" /mnt/wp_data/wp-config.php
+          sed -i "25i 'copy-to-s3' => true," /mnt/wp_data/wp-config.php
+          sed -i "26i 'serve-from-s3' => true," /mnt/wp_data/wp-config.php
+          sed -i "27i 'remove-local-file' => true," /mnt/wp_data/wp-config.php
+          sed -i "28i ) ) );" /mnt/wp_data/wp-config.php
+
+
+
+
+          sed -i "20idefine( 'AS3CF_AWS_ACCESS_KEY_ID', '${S3UserAccessKey}' );" /mnt/wp_data/wp-config.php
+          sed -i "21idefine( 'AS3CF_AWS_SECRET_ACCESS_ID', '${S3UserAccessKey.SecretAccessKey}' );" /mnt/wp_data/wp-config.php
+          sed -i "22idefine( 'AS3CF_BUCKET', '${S3Bucket}' );" /mnt/wp_data/wp-config.php
+          sed -i "24idefine( 'AS3CF_SETTINGS', serialize( array(" /mnt/wp_data/wp-config.php
+          sed -i "25i 'copy-to-s3' => true," /mnt/wp_data/wp-config.php
+          sed -i "26i 'serve-from-s3' => true," /mnt/wp_data/wp-config.php
+          sed -i "27i 'remove-local-file' => true," /mnt/wp_data/wp-config.php
+          sed -i "28i ) ) );" /mnt/wp_data/wp-config.php
+
+
+          sed -i "20idefine( 'AS3CF_AWS_ACCESS_KEY_ID', '${S3UserAccessKey}' );" /mnt/wp_data/wp-config.php
+          sed -i "21idefine( 'AS3CF_AWS_SECRET_ACCESS_ID', '${S3UserAccessKey.SecretAccessKey}' );" /mnt/wp_data/wp-config.php
+          sed -i "22idefine( 'AS3CF_BUCKET', '${S3Bucket}' );" /mnt/wp_data/wp-config.php
+          sed -i "23idefine( 'AS3CF_SETTINGS', serialize( array(" /mnt/wp_data/wp-config.php
+          sed -i "24i 'copy-to-s3' => true," /mnt/wp_data/wp-config.php
+          sed -i "25i 'serve-from-s3' => true," /mnt/wp_data/wp-config.php
+          sed -i "26i 'remove-local-file' => true," /mnt/wp_data/wp-config.php
+          sed -i "27i ) ) );" /mnt/wp_data/wp-config.php

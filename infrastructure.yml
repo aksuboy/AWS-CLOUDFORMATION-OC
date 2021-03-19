@@ -17,14 +17,6 @@ Parameters:
     Default: WordPressPassword
     Description: Le mdp pour la Database
     # AllowedPattern: ^([a-z0-A-Z9]*)$
-  VolumeName:
-    Description: The name to be used for the EFS volume
-    Type: String
-    Default: myEFSvolume
-  MountPoint:
-    Description: The Linux mount point for the EFS volume
-    Type: String
-    Default: myEFSvolume
   paramBucketName:
     Type: String
     Description: Nom du bucket S3
@@ -53,7 +45,9 @@ Resources:
       DBSubnetGroupName: !Ref DBServerSubnetGroup
       VPCSecurityGroups: 
         - Fn::GetAtt: [ DBSecurityGroup, GroupId ]
-  
+
+############################################ SECURITY GROUPS ############################################  
+
   DBServerSubnetGroup:
     Type: AWS::RDS::DBSubnetGroup
     Properties:
@@ -78,8 +72,88 @@ Resources:
           ToPort: 3306
           CidrIp: 0.0.0.0/0
       VpcId: !Ref VPC      
-      
- ################################# SUBNET  ################################# 
+  
+  InstancesWPSecurityGroup: 
+    Type:  AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Website EC2 security group 
+      SecurityGroupEgress: 
+        - IpProtocol:  -1
+          CidrIp:  0.0.0.0/0
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref VPC
+    
+  LoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable port 80 HTTP
+      VpcId: !Ref VPC
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      SecurityGroupIngress:
+         - IpProtocol: tcp
+           FromPort: 80
+           ToPort: 80
+           CidrIp: 0.0.0.0/0
+  
+  IntranetSecurityGroup: 
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security Group INTRANET 
+      SecurityGroupEgress: 
+        - IpProtocol:  -1
+          CidrIp:  0.0.0.0/0
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref VPC
+           
+  VPNSecurityGroup: 
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security Group VPN 
+      SecurityGroupEgress: 
+        - IpProtocol:  -1
+          CidrIp:  0.0.0.0/0
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 51820
+          ToPort: 51820
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref VPC
+
+ ############################################ SUBNETS ############################################  
 
   PublicSubnetA:
     Type: AWS::EC2::Subnet
@@ -125,24 +199,50 @@ Resources:
     Type: AWS::EC2::Subnet
     Properties:
       AvailabilityZone: eu-west-3c
-      CidrBlock: 10.0.2.0/24
+      CidrBlock: 10.0.5.0/24
       Tags:
         - Key: Name
           Value: 'MainVPC-private-AZ-C'
       VpcId: !Ref VPC
+
+############################################ CLOUDWATCH ############################################  
+
+  CPUAlarmHigh:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: CPUAlarm 
+      AlarmActions:
+      - Ref: AlarmsSnsTopic
+      MetricName: CPUUtilisation
+      Namespace: AWS/EC2
+      Statistic: Average
+      Period: '300'
+      EvaluationPeriods: '1'
+      Threshold: '80'
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: missing
+  
+  AlarmsSnsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      Subscription:
+        - Endpoint: moriennejonathan@gmail.com
+          Protocol: "email"
+  
+  MySubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Endpoint: moriennejonathan@gmail.com
+      Protocol: email
+      TopicArn: !Ref AlarmsSnsTopic
+
+############################################ WORDPRESS SCALING GROUP ############################################
 
   WordpressScalingGroup:
     Type: AWS::AutoScaling::AutoScalingGroup
     Properties:
       AutoScalingGroupName: EC-WordPress
       LaunchConfigurationName: !Ref WordpressEC2LaunchConfig
-      # AvailabilityZones:
-      #   # - Fn::Select:
-      #   #   - 1
-      #   #   - Fn::GetAZs: !Ref AWS::Region 
-      #   # - Fn::Select:
-      #   #   - 2
-      #   #   - Fn::GetAZs: !Ref AWS::Region 
       VPCZoneIdentifier:
         - !Ref PublicSubnetA
         - !Ref PublicSubnetB
@@ -151,7 +251,7 @@ Resources:
       MinSize: 2
       TargetGroupARNs:
         - !Ref WordpressEC2TargetGroup
-
+      
   WordpressEC2LaunchConfig:
     Type: AWS::AutoScaling::LaunchConfiguration
     DependsOn:
@@ -172,18 +272,22 @@ Resources:
           apt-get upgrade -y
           apt-get install -y nfs-common
           cd /mnt/
-          mkdir efs
+          mkdir efs 
           cd /efs/
           mount -t nfs -o nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2,noresvport ${FileSystem}.efs.eu-west-3.amazonaws.com:/ /mnt/efs
-          wget https://gist.githubusercontent.com/jnthnm/7e19aed55ad5709a614b3e84b3473597/raw/58a4879b1b2f245b58cf642e65e7a553e00139e4/docker-compose.yml /mnt/efs/docker-compose.yml
+          wget https://gist.githubusercontent.com/jnthnm/7e19aed55ad5709a614b3e84b3473597/raw/b61daff171173900e48effb03553b3438aee1042/docker-compose.yml /mnt/efs/docker-compose.yml
           docker-compose up -d
           docker exec mnt_wordpress_1 wp config create --dbname="${DBNAME}" --dbuser="${DBUSER}" --dbpass="${DBPASSWORD}" --dbhost="${RDSInstance.Endpoint.Address}"
-          docker exec mnt_wordpress_1 wp core install --path="/var/www/html" --url="http://${WordpressEC2LoadBalancer.DNSName}" --title="Exampleee" --admin_user=jmz --admin_password=secret --admin_email=nknlol75@gmail.com --allow-root
+          docker exec mnt_wordpress_1 wp core install --path="/var/www/html" --url="http://${WordpressEC2LoadBalancer.DNSName}" --title="Mon site WP" --admin_user=jmz --admin_password=secret --admin_email=nknlol75@gmail.com --allow-root
+          docker exec mnt_wordpress_1 wp plugin update --all --allow-root
           docker exec mnt_wordpress_1 wp plugin install amazon-s3-and-cloudfront --activate --allow-root
-          sed -i "83idefine( 'AS3CF_AWS_ACCESS_KEY_ID', '${S3UserAccessKey}' );" wp-config.php 
-          sed -i "84idefine( 'AS3CF_AWS_SECRET_ACCESS_ID', '${S3UserAccessKey.SecretAccessKey}' );" wp-config.php
-          sed -i "85idefine( 'AS3CF_AWS_SECRET_ACCESS_ID', '${S3Bucket}' );" wp-config.php 
-       
+          docker exec mnt_wordpress_1 wp theme update --all --allow-root
+          docker exec mnt_wordpress_1 wp language core update --allow-root
+          docker exec mnt_wordpress_1 wp language theme update --all --allow-root
+          docker exec mnt_wordpress_1 wp language plugin update --all --allow-root
+          sed -i "68idefine( 'AS3CF_SETTINGS', serialize( array('provider' => 'aws','access-key-id' => '${S3UserAccessKey}','secret-access-key' => '${S3UserAccessKey.SecretAccessKey}','bucket' => '${S3Bucket}','region' => 'eu-west-3',) ) );" wp_data/wp-config.php
+   
+
   WordpressEC2TargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
@@ -191,8 +295,10 @@ Resources:
       Port: 80
       Protocol: HTTP
       VpcId: !Ref VPC
-  
-  ### ELB LOADBALANCER ###
+      TargetGroupAttributes:
+      - Key: stickiness.enabled
+        Value: true
+
   WordpressEC2LoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
@@ -204,7 +310,7 @@ Resources:
       Subnets:
         - !Ref PublicSubnetA
         - !Ref PublicSubnetB
-  
+      
   LoadBalancerListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
@@ -214,39 +320,9 @@ Resources:
       DefaultActions:
         - Type: forward
           TargetGroupArn: !Ref WordpressEC2TargetGroup
-
-  InstancesWPSecurityGroup: 
-    Type:  AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: Website EC2 security group 
-      SecurityGroupEgress: 
-        - IpProtocol:  -1
-          CidrIp:  0.0.0.0/0
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 80
-          ToPort: 80
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
-          FromPort: 22
-          ToPort: 22
-          CidrIp: 0.0.0.0/0
-      VpcId: !Ref VPC
     
-  LoadBalancerSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: Enable port 80 HTTP
-      VpcId: !Ref VPC
-      SecurityGroupEgress:
-        - IpProtocol: -1
-          CidrIp: 0.0.0.0/0
-      SecurityGroupIngress:
-         - IpProtocol: tcp
-           FromPort: 80
-           ToPort: 80
-           CidrIp: 0.0.0.0/0
-  
+############################################ MOUNT ############################################ 
+
   MountTargetSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -283,9 +359,10 @@ Resources:
       PerformanceMode: generalPurpose
       FileSystemTags:
       - Key: Name
-        Value:
-          Ref: VolumeName
-  
+        Value: FileSystem
+
+############################################ S3 BUCKET ############################################     
+
   S3Bucket:
     Type: 'AWS::S3::Bucket'
     Properties:
@@ -309,11 +386,14 @@ Resources:
               Resource:
                 - !Sub arn:aws:s3:::${S3Bucket}
                 - !Sub arn:aws:s3:::${S3Bucket}/*
+
   S3UserAccessKey:
     Type: AWS::IAM::AccessKey
     Properties:
       UserName: !Ref S3User
-   
+
+############################################ INTERNET GATEWAY ############################################   
+
   InternetGateway:
     Type: AWS::EC2::InternetGateway
     Properties: 
@@ -390,6 +470,65 @@ Resources:
       GatewayId: !Ref InternetGateway
       RouteTableId: !Ref PrivateRouteTableC
 
+############################################ VPN ################################################  
+
+  PasserelleVPNEC2:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-089be8446d6ed4bed
+      InstanceType: t2.micro
+      KeyName : "ec2wp" 
+      NetworkInterfaces:
+          - DeviceIndex: 0
+            GroupSet:
+              - !Ref VPNSecurityGroup
+            AssociatePublicIpAddress: true
+            DeleteOnTermination: true
+            SubnetId: !Ref PrivateSubnetC
+            PrivateIpAddress: 10.0.5.196
+      UserData: 
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          sudo apt update
+          sudo apt-get upgrade -y
+     
+  Intranet:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-00f6fe7d6cbb56a78
+      InstanceType: t2.micro
+      KeyName : "ec2wp" 
+      NetworkInterfaces:
+          - DeviceIndex: 0
+            GroupSet:
+              - !Ref IntranetSecurityGroup
+            AssociatePublicIpAddress: true
+            DeleteOnTermination: true
+            SubnetId: !Ref PrivateSubnetC
+            PrivateIpAddress: 10.0.5.197
+      UserData: 
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          apt-get update
+          apt-get upgrade -y
+          apt-get install -y apache2
+
+############################################ EIP ############################################  
+  
+  ElasticIPAddress:
+    Type: AWS::EC2::EIPAssociation
+    Properties: 
+      EIP: !Ref MyEIP
+      InstanceId: !Ref PasserelleVPNEC2
+      NetworkInterfaceId: !Ref PasserelleVPNEC2
+
+  MyEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      InstanceId: !Ref PasserelleVPNEC2
+
+############################################ OUTPUTS ############################################ 
+
 Outputs:
     BucketName:
       Value: !Ref 'S3Bucket'
@@ -406,8 +545,6 @@ Outputs:
     User:
       Value: !Ref S3User
 
-
-  
 
 
   

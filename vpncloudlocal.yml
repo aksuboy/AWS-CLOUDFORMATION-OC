@@ -19,15 +19,15 @@ Resources:
       InstanceId: !Ref PasserelleVPNEC2
       NetworkInterfaceId: !Ref PasserelleVPNEC2
 
-  # MyEIP:
-  #   Type: AWS::EC2::EIP
-  #   Properties:
-  #     InstanceId: !Ref PasserelleVPNEC2
+  MyEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      InstanceId: !Ref PasserelleVPNEC2
 
   PasserelleVPNEC2:
     Type: AWS::EC2::Instance
     Properties:
-      ImageId: ami-05092e4ed8073405a
+      ImageId: ami-089be8446d6ed4bed
       InstanceType: t2.micro
       KeyName : "ec2wp" 
       NetworkInterfaces:
@@ -42,7 +42,7 @@ Resources:
         Fn::Base64: !Sub |
           #!/bin/bash
           sudo apt update
-
+          sudo apt-get upgrade -y
      
   Intranet:
     Type: AWS::EC2::Instance
@@ -57,13 +57,14 @@ Resources:
             AssociatePublicIpAddress: true
             DeleteOnTermination: true
             SubnetId: !Ref PrivateSubnetC
+            PrivateIpAddress: 10.0.100.197
       UserData: 
         Fn::Base64: !Sub |
           #!/bin/bash
           apt-get update
           apt-get upgrade -y
           apt-get install -y apache2
-  
+    
   IntranetSecurityGroup: 
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -129,7 +130,7 @@ Resources:
     Type: AWS::EC2::Subnet
     Properties:
       AvailabilityZone: eu-west-3c
-      CidrBlock: 10.0.100.0/24
+      CidrBlock: 10.0.100.0/18
       Tags:
         - Key: Name
           Value: 'MainVPC-private-AZ-C'

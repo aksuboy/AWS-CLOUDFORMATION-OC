@@ -6,17 +6,14 @@ Parameters:
     Type: String 
     Default: WordPress
     Description: Le nom de la Database
-    # AllowedPattern: ^([a-z0-A-Z9]*)$
   DBUSER:
     Type: String 
     Default: WordPressUser
     Description: Le nom du Database user
-    # AllowedPattern: ^([a-z0-A-Z9]*)$
   DBPASSWORD:
     Type: String 
     Default: WordPressPassword
     Description: Le mdp pour la Database
-    # AllowedPattern: ^([a-z0-A-Z9]*)$
   paramBucketName:
     Type: String
     Description: Nom du bucket S3
@@ -74,7 +71,7 @@ Resources:
       VpcId: !Ref VPC      
   
   InstancesWPSecurityGroup: 
-    Type:  AWS::EC2::SecurityGroup
+    Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Website EC2 security group 
       SecurityGroupEgress: 
@@ -159,7 +156,7 @@ Resources:
     Type: AWS::EC2::Subnet
     Properties:
       AvailabilityZone: eu-west-3a
-      CidrBlock: 10.0.100.0/24
+      CidrBlock: 10.0.100.0/26
       Tags:
         - Key: Name
           Value: 'MainVPC-public-AZ-A'
@@ -169,7 +166,7 @@ Resources:
     Type: AWS::EC2::Subnet
     Properties:
       AvailabilityZone: eu-west-3b
-      CidrBlock: 10.0.101.0/24
+      CidrBlock: 10.0.101.0/26
       Tags:
         - Key: Name
           Value: 'MainVPC-public-AZ-B'
@@ -179,7 +176,7 @@ Resources:
     Type: AWS::EC2::Subnet
     Properties:
       AvailabilityZone: eu-west-3a
-      CidrBlock: 10.0.3.0/24
+      CidrBlock: 10.0.3.0/26
       Tags:
         - Key: Name
           Value: 'MainVPC-private-AZ-A'
@@ -189,7 +186,7 @@ Resources:
     Type: AWS::EC2::Subnet
     Properties:
       AvailabilityZone: eu-west-3b
-      CidrBlock: 10.0.4.0/24
+      CidrBlock: 10.0.4.0/26
       Tags:
         - Key: Name
           Value: 'MainVPC-private-AZ-B'
@@ -199,7 +196,7 @@ Resources:
     Type: AWS::EC2::Subnet
     Properties:
       AvailabilityZone: eu-west-3c
-      CidrBlock: 10.0.5.0/24
+      CidrBlock: 10.0.5.0/26
       Tags:
         - Key: Name
           Value: 'MainVPC-private-AZ-C'
@@ -210,31 +207,72 @@ Resources:
   CPUAlarmHigh:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmDescription: CPUAlarm 
+      AlarmName: "CPU Alarme 80%"
+      AlarmDescription: Alarme de CPU si l'usage dépasse 80%
       AlarmActions:
-      - Ref: AlarmsSnsTopic
-      MetricName: CPUUtilisation
+      - Ref: CPUScalingHighPolicy
+      MetricName: CPUUtilization
       Namespace: AWS/EC2
       Statistic: Average
       Period: '300'
       EvaluationPeriods: '1'
       Threshold: '80'
       ComparisonOperator: GreaterThanThreshold
-      TreatMissingData: missing
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref WordpressScalingGroup
   
-  AlarmsSnsTopic:
+  CPUAlarmLow:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: "CPU Alarme 30%"
+      AlarmDescription: Alarme de CPU si l'usage est à 30%
+      AlarmActions:
+      - Ref: CPUScalingLowPolicy
+      MetricName: CPUUtilization
+      Namespace: AWS/EC2
+      Statistic: Average
+      Period: '300'
+      EvaluationPeriods: '1'
+      Threshold: '30'
+      ComparisonOperator: LessThanThreshold
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref WordpressScalingGroup
+  
+  AlarmsSnsTopicCPU:
     Type: AWS::SNS::Topic
     Properties:
       Subscription:
         - Endpoint: moriennejonathan@gmail.com
           Protocol: "email"
-  
+   
   MySubscription:
     Type: AWS::SNS::Subscription
     Properties:
       Endpoint: moriennejonathan@gmail.com
       Protocol: email
-      TopicArn: !Ref AlarmsSnsTopic
+      TopicArn: !Ref AlarmsSnsTopicCPU
+  
+############################################ CPU AUTOSCALING POLICY POUR LES DEUX ALARMES ############################################  
+
+  CPUScalingHighPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      ScalingAdjustment: '1'
+      Cooldown: 60
+      PolicyType: SimpleScaling
+      AutoScalingGroupName: !Ref WordpressScalingGroup
+  
+  CPUScalingLowPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      ScalingAdjustment: '-1'
+      Cooldown: 60
+      PolicyType: SimpleScaling
+      AutoScalingGroupName: !Ref WordpressScalingGroup
 
 ############################################ WORDPRESS SCALING GROUP ############################################
 
@@ -251,6 +289,13 @@ Resources:
       MinSize: 2
       TargetGroupARNs:
         - !Ref WordpressEC2TargetGroup
+      NotificationConfigurations:
+        - TopicARN: !Ref AlarmsSnsTopicCPU
+          NotificationTypes:
+            - autoscaling:EC2_INSTANCE_LAUNCH
+            - autoscaling:EC2_INSTANCE_LAUNCH_ERROR
+            - autoscaling:EC2_INSTANCE_TERMINATE
+            - autoscaling:EC2_INSTANCE_TERMINATE_ERROR
       
   WordpressEC2LaunchConfig:
     Type: AWS::AutoScaling::LaunchConfiguration
@@ -270,6 +315,7 @@ Resources:
           #!/bin/bash
           apt-get update
           apt-get upgrade -y
+          sudo apt-get install -y stress-ng
           apt-get install -y nfs-common
           cd /mnt/
           mkdir efs 
@@ -285,9 +331,8 @@ Resources:
           docker exec mnt_wordpress_1 wp language core update --allow-root
           docker exec mnt_wordpress_1 wp language theme update --all --allow-root
           docker exec mnt_wordpress_1 wp language plugin update --all --allow-root
-          sed -i "68idefine( 'AS3CF_SETTINGS', serialize( array('provider' => 'aws','access-key-id' => '${S3UserAccessKey}','secret-access-key' => '${S3UserAccessKey.SecretAccessKey}','bucket' => '${S3Bucket}','region' => 'eu-west-3',) ) );" wp_data/wp-config.php
+          sed -i "68idefine( 'AS3CF_SETTINGS', serialize( array('provider' => 'aws','access-key-id' => '${S3UserAccessKey}','secret-access-key' => '${S3UserAccessKey.SecretAccessKey}','bucket' => '${S3Bucket}','region' => 'eu-west-3','copy-to-s3' => true,'serve-from-s3' => true ,'remove-local-file' => true,) ) );" wp_data/wp-config.php
    
-
   WordpressEC2TargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
@@ -485,7 +530,7 @@ Resources:
             AssociatePublicIpAddress: true
             DeleteOnTermination: true
             SubnetId: !Ref PrivateSubnetC
-            PrivateIpAddress: 10.0.5.196
+            PrivateIpAddress: 10.0.5.50
       UserData: 
         Fn::Base64: !Sub |
           #!/bin/bash
@@ -505,7 +550,7 @@ Resources:
             AssociatePublicIpAddress: true
             DeleteOnTermination: true
             SubnetId: !Ref PrivateSubnetC
-            PrivateIpAddress: 10.0.5.197
+            PrivateIpAddress: 10.0.5.51
       UserData: 
         Fn::Base64: !Sub |
           #!/bin/bash
